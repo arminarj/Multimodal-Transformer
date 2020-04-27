@@ -90,7 +90,7 @@ use_cuda = False
 
 output_dim_dict = {
     'mosi': 1,
-    'mosei_senti': 1,
+    'mosei_senti': 6,
     'iemocap': 8
 }
 
@@ -144,7 +144,7 @@ hyp_params.batch_chunk = args.batch_chunk
 hyp_params.n_train, hyp_params.n_valid, hyp_params.n_test = len(train_data), len(valid_data), len(test_data)
 hyp_params.model = str.upper(args.model.strip())
 hyp_params.output_dim = output_dim_dict.get(dataset, 1)
-hyp_params.criterion = criterion_dict.get(dataset, 'L1Loss')
+hyp_params.criterion = criterion_dict.get(dataset, 'MSELoss')
 
 
 if __name__ == '__main__':

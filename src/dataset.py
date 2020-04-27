@@ -22,14 +22,18 @@ class Multimodal_Datasets(Dataset):
         dataset_path = os.path.join(dataset_path, data+'_data.pkl' if if_align else data+'_data_noalign.pkl' )
         dataset = pickle.load(open(dataset_path, 'rb'))
 
+        _vision = 'FACET 4.2'
+        _audio = 'COAVAREP' 
+        _text = 'glove_vectors' 
+        _labels = 'All Labels'
         # These are torch tensors
-        self.vision = torch.tensor(dataset[split_type]['vision'].astype(np.float32)).cpu().detach()
-        self.text = torch.tensor(dataset[split_type]['text'].astype(np.float32)).cpu().detach()
-        self.audio = dataset[split_type]['audio'].astype(np.float32)
-        self.audio[self.audio == -np.inf] = 0
-        self.audio = torch.tensor(self.audio).cpu().detach()
-        self.labels = torch.tensor(dataset[split_type]['labels'].astype(np.float32)).cpu().detach()
-        
+        self.vision = torch.tensor(dataset[split_type][_vision]).cpu().detach().float()
+        self.text = torch.tensor(dataset[split_type][_text]).cpu().detach().float()
+        self.audio = dataset[split_type][_audio]
+        self.audio[self.audio == -float('inf')] = 0
+        self.audio = torch.tensor(self.audio).cpu().detach().float()
+        self.labels = torch.tensor(dataset[split_type][_labels])[:, :, 1:].squeeze(1).cpu().detach().float()
+        assert self.labels.size(1) == 6
         # Note: this is STILL an numpy array
         self.meta = dataset[split_type]['id'] if 'id' in dataset[split_type].keys() else None
        
