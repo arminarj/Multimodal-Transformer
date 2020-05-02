@@ -11,7 +11,7 @@ class MULTModel(nn.Module):
         Construct a MulT model.
         """
         super(MULTModel, self).__init__()
-        self.orig_d_l, self.orig_d_a, self.orig_d_v = hyp_params.orig_d_l, hyp_params.orig_d_a, hyp_params.orig_d_v
+        self.orig_d_l, self.orig_d_a, self.orig_d_v = hyp_params.orig_d_l, hyp_params.orig_d_a1 + hyp_params.orig_d_a2, hyp_params.orig_d_v1+hyp_params.orig_d_v2
         self.d_l, self.d_a, self.d_v = 30, 30, 30
         self.vonly = hyp_params.vonly
         self.aonly = hyp_params.aonly
@@ -89,10 +89,12 @@ class MULTModel(nn.Module):
                                   embed_dropout=self.embed_dropout,
                                   attn_mask=self.attn_mask)
             
-    def forward(self, x_l, x_a, x_v):
+    def forward(self, x_l, x_a1, x_a2, x_v1, x_v2):
         """
         text, audio, and vision should have dimension [batch_size, seq_len, n_features]
         """
+        x_a = torch.cat([x_a1, x_a2,], dim=-1)
+        x_v = torch.cat([x_v1, x_v2,], dim=-1) 
         x_l = F.dropout(x_l.transpose(1, 2), p=self.embed_dropout, training=self.training)
         x_a = x_a.transpose(1, 2)
         x_v = x_v.transpose(1, 2)

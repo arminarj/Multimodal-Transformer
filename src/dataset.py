@@ -20,7 +20,7 @@ class Multimodal_Datasets(Dataset):
     def __init__(self, dataset_path, data='mosei_senti', split_type='train', if_align=False, norm_lables=False):
         super(Multimodal_Datasets, self).__init__()
         _dataset_path = dataset_path
-        dataset_path = os.path.join(dataset_path, data+'_data.data')
+        dataset_path = os.path.join(dataset_path, data+'.data')
         dataset = torch.load(dataset_path)
 
         _vision = 'FACET 4.2'
@@ -45,11 +45,11 @@ class Multimodal_Datasets(Dataset):
         self.audio_2[self.audio_2 == -float('inf')] = 0
         self.audio_2 = self.audio_2.clone().cpu().detach().float()
         ## label
-        self.labels = dataset[split_type][_labels][:, :, :1].clone().squeeze(1).cpu().detach().float()
+        self.labels = dataset[split_type][_labels][:, :, 1:].clone().squeeze(1).cpu().detach().float()
 
         if norm_lables:
             self.labels = self.normalize(self.labels)
-        assert self.labels.size(1) == 1
+        assert self.labels.size(1) == 6
         # Note: this is STILL an numpy array
         self.meta = dataset[split_type]['id'] if 'id' in dataset[split_type].keys() else None
          

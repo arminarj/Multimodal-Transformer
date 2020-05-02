@@ -91,6 +91,7 @@ use_cuda = False
 output_dim_dict = {
     'mosi': 1,
     'mosei_senti': 6,
+    'mosei_all_labels': 6,
     'iemocap': 8
 }
 
@@ -134,8 +135,8 @@ if not args.aligned:
 ####################################################################
 
 hyp_params = args
-hyp_params.orig_d_l, hyp_params.orig_d_a, hyp_params.orig_d_v = train_data.get_dim()
-hyp_params.l_len, hyp_params.a_len, hyp_params.v_len = train_data.get_seq_len()
+hyp_params.orig_d_l, hyp_params.orig_d_a1, hyp_params.orig_d_a2, hyp_params.orig_d_v1, hyp_params.orig_d_v2 = train_data.get_dim()
+hyp_params.l_len, hyp_params.a_len, hyp_params.v_len, _, _ = train_data.get_seq_len()
 hyp_params.layers = args.nlevels
 hyp_params.use_cuda = use_cuda
 hyp_params.dataset = dataset
@@ -143,7 +144,7 @@ hyp_params.when = args.when
 hyp_params.batch_chunk = args.batch_chunk
 hyp_params.n_train, hyp_params.n_valid, hyp_params.n_test = len(train_data), len(valid_data), len(test_data)
 hyp_params.model = str.upper(args.model.strip())
-hyp_params.output_dim = output_dim_dict.get(dataset, 1)
+hyp_params.output_dim = output_dim_dict.get(dataset, 6)
 hyp_params.criterion = criterion_dict.get(dataset, 'MSELoss')
 
 

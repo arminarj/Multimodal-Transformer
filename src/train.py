@@ -90,8 +90,8 @@ def train_model(settings, hyp_params, train_loader, valid_loader, test_loader):
         proc_loss, proc_size = 0, 0
         start_time = time.time()
         for i_batch, (batch_X, batch_Y, batch_META) in enumerate(train_loader):
-            sample_ind, text, audio, vision = batch_X
-            eval_attr = batch_Y.squeeze(-1)   # if num of labels is 1
+            sample_ind, text, audio_1, audio_2, vision_1, vision_2 = batch_X
+            eval_attr = batch_Y  # if num of labels is 1
             
             model.zero_grad()
             if ctc_criterion is not None:
@@ -100,7 +100,7 @@ def train_model(settings, hyp_params, train_loader, valid_loader, test_loader):
                 
             if hyp_params.use_cuda:
                 with torch.cuda.device(0):
-                    text, audio, vision, eval_attr = text.cuda(), audio.cuda(), vision.cuda(), eval_attr.cuda()
+                    text, audio_1, audio_2, vision_1, vision_2, eval_attr = text.cuda(), audio_1.cuda(), audio_2.cuda(), vision_1.cuda(), vision_2.cuda(), eval_attr.cuda()
                     if hyp_params.dataset == 'iemocap':
                         eval_attr = eval_attr.long()
             
@@ -156,7 +156,7 @@ def train_model(settings, hyp_params, train_loader, valid_loader, test_loader):
                 ctc_loss.backward()
                 combined_loss = raw_loss + ctc_loss
             else:
-                preds, hiddens = net(text, audio, vision)
+                preds, hiddens = net(text, audio_1, audio_2, vision_1, vision_2)
                 if hyp_params.dataset == 'iemocap':
                     preds = preds.view(-1, 2)
                     eval_attr = eval_attr.view(-1)
@@ -196,12 +196,12 @@ def train_model(settings, hyp_params, train_loader, valid_loader, test_loader):
 
         with torch.no_grad():
             for i_batch, (batch_X, batch_Y, batch_META) in enumerate(loader):
-                sample_ind, text, audio, vision = batch_X
+                sample_ind, text, audio_1, audio_2, vision_1, vision_2 = batch_X
                 eval_attr = batch_Y.squeeze(dim=-1) # if num of labels is 1
             
                 if hyp_params.use_cuda:
                     with torch.cuda.device(0):
-                        text, audio, vision, eval_attr = text.cuda(), audio.cuda(), vision.cuda(), eval_attr.cuda()
+                        text, audio_1, audio_2, vision_1, vision_2, eval_attr = text.cuda(), audio_1.cuda(), audio_2.cuda(), vision_1.cuda(), vision_2.cuda(), eval_attr.cuda()
                         if hyp_params.dataset == 'iemocap':
                             eval_attr = eval_attr.long()
                         
@@ -214,7 +214,7 @@ def train_model(settings, hyp_params, train_loader, valid_loader, test_loader):
                     vision, _ = ctc_v2l_net(vision)   # vision aligned to text
                 
                 net = nn.DataParallel(model) if batch_size > 10 else model
-                preds, _ = net(text, audio, vision)
+                preds, _ = net(text, audio_1, audio_2, vision_1, vision_2)
                 if hyp_params.dataset == 'iemocap':
                     preds = preds.view(-1, 2)
                     eval_attr = eval_attr.view(-1)
@@ -253,7 +253,7 @@ def train_model(settings, hyp_params, train_loader, valid_loader, test_loader):
     model = load_model(hyp_params, name=hyp_params.name)
     _, results, truths = evaluate(model, ctc_a2l_module, ctc_v2l_module, criterion, test=True)
 
-    if hyp_params.dataset == "mosei_senti":
+    if (hyp_params.dataset == "mosei_senti") or (hyp_params.dataset == "mosei_all_labels") :
         eval_mosei_senti(results, truths, True)
     elif hyp_params.dataset == 'mosi':
         eval_mosi(results, truths, True)
