@@ -208,4 +208,3 @@ class MULTModel(nn.Module):
         
         output = self.out_layer(last_hs_proj)
         return output, last_hs
-
