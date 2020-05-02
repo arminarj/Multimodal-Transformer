@@ -17,6 +17,7 @@ from sklearn.metrics import precision_recall_fscore_support
 from sklearn.metrics import accuracy_score, f1_score
 from src.eval_metrics import *
 
+from tensorboardX import SummaryWriter
 
 ####################################################################
 #
@@ -81,7 +82,8 @@ def train_model(settings, hyp_params, train_loader, valid_loader, test_loader):
     ctc_criterion = settings['ctc_criterion']
     
     scheduler = settings['scheduler']
-    
+
+    writer = SummaryWriter()
 
     def train(model, optimizer, criterion, ctc_a2l_module, ctc_v2l_module, ctc_a2l_optimizer, ctc_v2l_optimizer, ctc_criterion):
         epoch_loss = 0
@@ -183,7 +185,10 @@ def train_model(settings, hyp_params, train_loader, valid_loader, test_loader):
                       format(epoch, i_batch, num_batches, elapsed_time * 1000 / hyp_params.log_interval, avg_loss))
                 proc_loss, proc_size = 0, 0
                 start_time = time.time()
-                
+
+        for name, param in model.named_parameters():
+                writer.add_histogram(name, param.clone().cpu().data.numpy(), epoch)
+        writer.add_scalar('Loss/train', epoch_loss / hyp_params.n_train, epoch)
         return epoch_loss / hyp_params.n_train
 
     def evaluate(model, ctc_a2l_module, ctc_v2l_module, criterion, test=False):
@@ -225,7 +230,6 @@ def train_model(settings, hyp_params, train_loader, valid_loader, test_loader):
                 truths.append(eval_attr)
                 
         avg_loss = total_loss / (hyp_params.n_test if test else hyp_params.n_valid)
-
         results = torch.cat(results)
         truths = torch.cat(truths)
         return avg_loss, results, truths
@@ -244,7 +248,8 @@ def train_model(settings, hyp_params, train_loader, valid_loader, test_loader):
         print("-"*50)
         print('Epoch {:2d} | Time {:5.4f} sec | Valid Loss {:5.4f} | Test Loss {:5.4f}'.format(epoch, duration, val_loss, test_loss))
         print("-"*50)
-        
+        writer.add_scalar(f'Loss/valid', val_loss, epoch)
+        writer.add_scalar(f'Loss/test', test_loss, epoch) 
         if val_loss < best_valid:
             print(f"Saved model at pre_trained_models/{hyp_params.name}.pt!")
             save_model(hyp_params, model, name=hyp_params.name)

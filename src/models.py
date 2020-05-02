@@ -2,8 +2,56 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
+from src.utils import *
 from modules.transformer import TransformerEncoder
+import os
 
+
+class AE_vision_2(nn.Module):
+    def __init__(self, dim=711, out_dim=50, p=0.25):
+        super(AE_vision_2, self).__init__()
+        self.encoder = nn.Sequential(
+            nn.Linear(dim, 1024), nn.ReLU(True), nn.Dropout(p=p),
+            nn.Linear(1024, 512), nn.ReLU(True), nn.Dropout(p=p),
+            nn.Linear(512, 256), nn.ReLU(True), nn.Dropout(p=p),
+            nn.Linear(256, 128), nn.ReLU(True), nn.Dropout(p=p),
+            nn.Linear(128, out_dim)
+        )
+        self.decoder = nn.Sequential(
+            nn.Linear(out_dim, 128), nn.ReLU(True), nn.Dropout(p=p),
+            nn.Linear(128, 256), nn.ReLU(True), nn.Dropout(p=p),
+            nn.Linear(256, 512), nn.ReLU(True), nn.Dropout(p=p),
+            nn.Linear(512, 1024), nn.ReLU(True), nn.Dropout(p=p),
+            nn.Linear(1024, dim), nn.Sigmoid(),
+        )
+
+    def forward(self, x):
+        x = self.encoder(x)
+        x = self.decoder(x)
+        return x
+
+class AE_audio_2(nn.Module):
+    def __init__(self, dim, out_dim=10, p=0.25):
+        super(AE_audio_2, self).__init__()
+        self.encoder = nn.Sequential(
+            nn.Linear(dim, 256), nn.ReLU(True), nn.Dropout(p=p),
+            nn.Linear(256, 256), nn.ReLU(True), nn.Dropout(p=p),
+            nn.Linear(256, 128), nn.ReLU(True), nn.Dropout(p=p),
+            nn.Linear(128, 64), nn.ReLU(True), nn.Dropout(p=p),
+            nn.Linear(64, out_dim)
+        )
+        self.decoder = nn.Sequential(
+            nn.Linear(out_dim, 64), nn.ReLU(True), nn.Dropout(p=p),
+            nn.Linear(64, 128), nn.ReLU(True), nn.Dropout(p=p),
+            nn.Linear(128, 256), nn.ReLU(True), nn.Dropout(p=p),
+            nn.Linear(256, 256), nn.ReLU(True), nn.Dropout(p=p),
+            nn.Linear(256, dim), nn.Sigmoid(),
+        )
+
+    def forward(self, x):
+        x = self.encoder(x)
+        x = self.decoder(x)
+        return x
 
 class MULTModel(nn.Module):
     def __init__(self, hyp_params):
@@ -11,7 +59,19 @@ class MULTModel(nn.Module):
         Construct a MulT model.
         """
         super(MULTModel, self).__init__()
-        self.orig_d_l, self.orig_d_a, self.orig_d_v = hyp_params.orig_d_l, hyp_params.orig_d_a1 + hyp_params.orig_d_a2, hyp_params.orig_d_v1+hyp_params.orig_d_v2
+
+        self.audio_2_AE = AE_audio_2(384, 50) 
+        self.audio_2_AE = torch.load(f'/content/Multimodal-Transformer/pre_trained_models/AE_audio_2_final_MULT.pt')
+
+        self.vision_2_AE  = AE_vision_2(711, 50)
+        self.vision_2_AE  = torch.load(f'pre_trained_models/AE_vision_2_MULT.pt')
+
+        for param in self.audio_2_AE.parameters():
+            param.requires_grad = False
+        for param in self.vision_2_AE.parameters():
+            param.requires_grad = False
+
+        self.orig_d_l, self.orig_d_a, self.orig_d_v = hyp_params.orig_d_l, hyp_params.orig_d_a1+50, hyp_params.orig_d_v1+50
         self.d_l, self.d_a, self.d_v = 30, 30, 30
         self.vonly = hyp_params.vonly
         self.aonly = hyp_params.aonly
@@ -93,6 +153,8 @@ class MULTModel(nn.Module):
         """
         text, audio, and vision should have dimension [batch_size, seq_len, n_features]
         """
+        x_a2 = self.audio_2_AE.encoder(x_a2)
+        x_v2 = self.vision_2_AE.encoder(x_v2)
         x_a = torch.cat([x_a1, x_a2,], dim=-1)
         x_v = torch.cat([x_v1, x_v2,], dim=-1) 
         x_l = F.dropout(x_l.transpose(1, 2), p=self.embed_dropout, training=self.training)
