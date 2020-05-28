@@ -32,13 +32,13 @@ class TransformerEncoder(nn.Module):
         self.attn_mask = attn_mask
 
         self.layers = nn.ModuleList([])
+        new_layer = TransformerEncoderLayer(embed_dim,
+                                    num_heads=num_heads,
+                                    attn_dropout=attn_dropout,
+                                    relu_dropout=relu_dropout,
+                                    res_dropout=res_dropout,
+                                    attn_mask=attn_mask)
         for layer in range(layers):
-            new_layer = TransformerEncoderLayer(embed_dim,
-                                                num_heads=num_heads,
-                                                attn_dropout=attn_dropout,
-                                                relu_dropout=relu_dropout,
-                                                res_dropout=res_dropout,
-                                                attn_mask=attn_mask)
             self.layers.append(new_layer)
 
         self.register_buffer('version', torch.Tensor([2]))
