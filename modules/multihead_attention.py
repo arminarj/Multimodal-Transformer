@@ -48,7 +48,7 @@ class MultiheadAttention(nn.Module):
         if self.bias_v is not None:
             nn.init.xavier_normal_(self.bias_v)
 
-    def forward(self, query, key, value, attn_mask=None):
+    def forward(self, query, key, value, attn_mask=None, decorr=True):
         """Input shape: Time x Batch x Channel
         Self-attention can be implemented by passing in the same arguments for
         query, key and value. Timesteps can be masked by supplying a T x T mask in the
@@ -81,13 +81,20 @@ class MultiheadAttention(nn.Module):
         else:
             q = self.in_proj_q(query)
             k = self.in_proj_k(key)
-            v = self.in_proj_v(value)
+            if decorr:
+                v_corr, v_decorr = in_proj_decorr_v(value)
+            else:
+                v = self.in_proj_v(value)
         q *= self.scaling
 
         if self.bias_k is not None:
             assert self.bias_v is not None
             k = torch.cat([k, self.bias_k.repeat(1, bsz, 1)])
-            v = torch.cat([v, self.bias_v.repeat(1, bsz, 1)])
+            if decorr:
+                v_corr = torch.cat([v_corr, self.bias_v.repeat(1, bsz, 1)])
+                v_decorr = torch.cat([v_decorr, self.bias_v.repeat(1, bsz, 1)])
+            else:
+                v = torch.cat([v, self.bias_v.repeat(1, bsz, 1)])
             if attn_mask is not None:
                 attn_mask = torch.cat([attn_mask, attn_mask.new_zeros(attn_mask.size(0), 1)], dim=1)
 
@@ -95,14 +102,22 @@ class MultiheadAttention(nn.Module):
         if k is not None:
             k = k.contiguous().view(-1, bsz * self.num_heads, self.head_dim).transpose(0, 1)
         if v is not None:
-            v = v.contiguous().view(-1, bsz * self.num_heads, self.head_dim).transpose(0, 1)
+            if decorr:
+                v_corr = v_corr.contiguous().view(-1, bsz * self.num_heads, self.head_dim).transpose(0, 1)
+                v_decorr = v_decorr.contiguous().view(-1, bsz * self.num_heads, self.head_dim).transpose(0, 1)
+            else:
+                v = v.contiguous().view(-1, bsz * self.num_heads, self.head_dim).transpose(0, 1)
 
         src_len = k.size(1)
 
         if self.add_zero_attn:
             src_len += 1
             k = torch.cat([k, k.new_zeros((k.size(0), 1) + k.size()[2:])], dim=1)
-            v = torch.cat([v, v.new_zeros((v.size(0), 1) + v.size()[2:])], dim=1)
+            if decorr:
+                v_corr = torch.cat([v_corr, v_decorr.new_zeros((v_corr.size(0), 1) + v_corr.size()[2:])], dim=1)
+                v_decorr = torch.cat([v_decorr, v_decorr.new_zeros((v_decorr.size(0), 1) + v_decorr.size()[2:])], dim=1)
+            else:
+                v = torch.cat([v, v.new_zeros((v.size(0), 1) + v.size()[2:])], dim=1)
             if attn_mask is not None:
                 attn_mask = torch.cat([attn_mask, attn_mask.new_zeros(attn_mask.size(0), 1)], dim=1)
         
@@ -117,12 +132,20 @@ class MultiheadAttention(nn.Module):
                 print(attn_mask.unsqueeze(0).shape)
                 assert False
                 
-        attn_weights = F.softmax(attn_weights.float(), dim=-1).type_as(attn_weights)
+        attn_weights_corr = F.softmax(attn_weights.float(), dim=-1).type_as(attn_weights)
+        attn_weights_decorr = F.softmin(attn_weights.float(), dim=-1).type_as(attn_weights)
         # attn_weights = F.relu(attn_weights)
         # attn_weights = attn_weights / torch.max(attn_weights)
-        attn_weights = F.dropout(attn_weights, p=self.attn_dropout, training=self.training)
+        attn_weights_corr = F.dropout(attn_weights_corr, p=self.attn_dropout, training=self.training)
+        attn_weights_decorr = F.dropout(attn_weights_decorr, p=self.attn_dropout, training=self.training)
 
-        attn = torch.bmm(attn_weights, v)
+        attn_corr = torch.bmm(attn_weights_corr, v_corr)
+        attn_decorr = torch.bmm(attn_weights_decorr, v_decorr)
+        print(f'corr shape : {attn_corr.shape}')
+        print(f'decorr shape : {attn_decorr.shape}')
+
+        attn = torch.cat([attn_corr, attn_decorr], dim=-1)
+        print(f'attention shape : {attn.shape}')
         assert list(attn.size()) == [bsz * self.num_heads, tgt_len, self.head_dim]
 
         attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
@@ -147,6 +170,11 @@ class MultiheadAttention(nn.Module):
 
     def in_proj_v(self, value):
         return self._in_proj(value, start=2 * self.embed_dim)
+
+    def in_proj_decorr_v(self, value):
+        corr_v = self._in_proj(value, start=2 * self.embed_dim, end= 2.5 * self.embed_dim)
+        decorr_v = self._in_proj(value, start=2.5 * self.embed_dim)
+        return corr_v, decorr_v
 
     def _in_proj(self, input, start=0, end=None, **kwargs):
         weight = kwargs.get('weight', self.in_proj_weight)
