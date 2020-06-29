@@ -83,6 +83,7 @@ class MultiheadAttention(nn.Module):
             k = self.in_proj_k(key)
             if decorr:
                 v_corr, v_decorr = self.in_proj_decorr_v(value)
+                v = None
             else:
                 v = self.in_proj_v(value)
         q *= self.scaling
@@ -101,7 +102,7 @@ class MultiheadAttention(nn.Module):
         q = q.contiguous().view(tgt_len, bsz * self.num_heads, self.head_dim).transpose(0, 1)
         if k is not None:
             k = k.contiguous().view(-1, bsz * self.num_heads, self.head_dim).transpose(0, 1)
-        if v is not None:
+        if (v is not None) or (v_corr is not None):
             if decorr:
                 v_corr = v_corr.contiguous().view(-1, bsz * self.num_heads, self.head_dim).transpose(0, 1)
                 v_decorr = v_decorr.contiguous().view(-1, bsz * self.num_heads, self.head_dim).transpose(0, 1)
@@ -131,21 +132,30 @@ class MultiheadAttention(nn.Module):
                 print(attn_weights.shape)
                 print(attn_mask.unsqueeze(0).shape)
                 assert False
-                
-        attn_weights_corr = F.softmax(attn_weights.float(), dim=-1).type_as(attn_weights)
-        attn_weights_decorr = F.softmin(attn_weights.float(), dim=-1).type_as(attn_weights)
-        # attn_weights = F.relu(attn_weights)
-        # attn_weights = attn_weights / torch.max(attn_weights)
-        attn_weights_corr = F.dropout(attn_weights_corr, p=self.attn_dropout, training=self.training)
-        attn_weights_decorr = F.dropout(attn_weights_decorr, p=self.attn_dropout, training=self.training)
+        if decorr: 
+            attn_weights_corr = F.softmax(attn_weights.float(), dim=-1).type_as(attn_weights)
+            attn_weights_decorr = F.softmin(attn_weights.float(), dim=-1).type_as(attn_weights)
+            # attn_weights = F.relu(attn_weights)
+            # attn_weights = attn_weights / torch.max(attn_weights)
+            attn_weights_corr = F.dropout(attn_weights_corr, p=self.attn_dropout, training=self.training)
+            attn_weights_decorr = F.dropout(attn_weights_decorr, p=self.attn_dropout, training=self.training)
+            print(f'before V')
+            print(f'attn_weights_corr shape : {attn_weights_corr.shape}')
+            print(f'attn_weights_decorr shape : {attn_weights_decorr.shape}')
+            print(f'v_corr shape : {v_corr.shape}')
+            print(f'v_decorr shape : {v_decorr.shape}')
 
-        attn_corr = torch.bmm(attn_weights_corr, v_corr)
-        attn_decorr = torch.bmm(attn_weights_decorr, v_decorr)
-        print(f'corr shape : {attn_corr.shape}')
-        print(f'decorr shape : {attn_decorr.shape}')
+            attn_corr = torch.bmm(attn_weights_corr, v_corr)
+            attn_decorr = torch.bmm(attn_weights_decorr, v_decorr)
+            print(f'after V')
+            print(f'corr shape : {attn_corr.shape}')
+            print(f'decorr shape : {attn_decorr.shape}')
 
-        attn = torch.cat([attn_corr, attn_decorr], dim=-1)
-        print(f'attention shape : {attn.shape}')
+            attn = torch.cat([attn_corr, attn_decorr], dim=-1)
+            print(f'attention shape : {attn.shape}')
+        else:
+            ## not complete
+            pass
         assert list(attn.size()) == [bsz * self.num_heads, tgt_len, self.head_dim]
 
         attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
@@ -172,14 +182,23 @@ class MultiheadAttention(nn.Module):
         return self._in_proj(value, start=2 * self.embed_dim)
 
     def in_proj_decorr_v(self, value):
-        corr_v = self._in_proj(value, start=2 * self.embed_dim, end= int(2.5 * self.embed_dim))
-        decorr_v = self._in_proj(value, start=int(2.5 * self.embed_dim))
+        corr_v = self._in_proj(value, start=2 * self.embed_dim, out_end=15,
+                        bias_start=2 * self.embed_dim, bias_end=int(2.5*self.embed_dim))
+        decorr_v = self._in_proj(value, start=2 * self.embed_dim, out_start=15,
+                        bias_start= int(2.5*self.embed_dim))
         return corr_v, decorr_v
 
-    def _in_proj(self, input, start=0, end=None, **kwargs):
+    def _in_proj(self, input, start=0, end=None, out_start=None, out_end=None, **kwargs):
         weight = kwargs.get('weight', self.in_proj_weight)
         bias = kwargs.get('bias', self.in_proj_bias)
-        weight = weight[start:end, :]
+        if (out_start is None) and (out_end is None):
+            weight = weight[start:end, :]
+        else:
+            weight = weight[start:end, out_start:out_end]
+        print(f'start, end : {start}, {end}  ---- weight shape : {weight.shape}')
         if bias is not None:
-            bias = bias[start:end]
-        return F.linear(input, weight, bias)
+            if (bias_start is not None) or (bias_end is not None) :
+                bias = bias[bias_start:bias_end] 
+            else:
+                bias = bias[start:end]
+        return F.linear(input, weight.T, bias)
