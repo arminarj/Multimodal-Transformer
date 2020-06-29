@@ -82,7 +82,7 @@ class MultiheadAttention(nn.Module):
             q = self.in_proj_q(query)
             k = self.in_proj_k(key)
             if decorr:
-                v_corr, v_decorr = in_proj_decorr_v(value)
+                v_corr, v_decorr = self.in_proj_decorr_v(value)
             else:
                 v = self.in_proj_v(value)
         q *= self.scaling
@@ -172,8 +172,8 @@ class MultiheadAttention(nn.Module):
         return self._in_proj(value, start=2 * self.embed_dim)
 
     def in_proj_decorr_v(self, value):
-        corr_v = self._in_proj(value, start=2 * self.embed_dim, end= 2.5 * self.embed_dim)
-        decorr_v = self._in_proj(value, start=2.5 * self.embed_dim)
+        corr_v = self._in_proj(value, start=2 * self.embed_dim, end= int(2.5 * self.embed_dim))
+        decorr_v = self._in_proj(value, start=int(2.5 * self.embed_dim))
         return corr_v, decorr_v
 
     def _in_proj(self, input, start=0, end=None, **kwargs):

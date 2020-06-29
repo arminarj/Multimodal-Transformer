@@ -73,8 +73,14 @@ def initiate(hyp_params, train_loader, valid_loader, test_loader):
 def train_model(settings, hyp_params, train_loader, valid_loader, test_loader):
     model = settings['model']
     optimizer = settings['optimizer']
-    criterion = settings['criterion']    
-    
+    # criterion = settings['criterion']
+
+    def criterion(y_hat, y):
+        gamma = 1e-2
+        mse_loss = nn.MSELoss()(y_hat, y)
+        l1_reg = torch.norm(y_hat, 1)
+        return mse_loss + gamma * l1_reg
+
     ctc_a2l_module = settings['ctc_a2l_module']
     ctc_v2l_module = settings['ctc_v2l_module']
     ctc_a2l_optimizer = settings['ctc_a2l_optimizer']
@@ -158,7 +164,7 @@ def train_model(settings, hyp_params, train_loader, valid_loader, test_loader):
                 ctc_loss.backward()
                 combined_loss = raw_loss + ctc_loss
             else:
-                preds, hiddens = net(text, audio_1, audio_2, vision_1, vision_2)
+                preds, hiddens = net(text, audio_1, vision_1)
                 if hyp_params.dataset == 'iemocap':
                     preds = preds.view(-1, 2)
                     eval_attr = eval_attr.view(-1)
@@ -219,7 +225,7 @@ def train_model(settings, hyp_params, train_loader, valid_loader, test_loader):
                     vision, _ = ctc_v2l_net(vision)   # vision aligned to text
                 
                 net = nn.DataParallel(model) if batch_size > 10 else model
-                preds, _ = net(text, audio_1, audio_2, vision_1, vision_2)
+                preds, _ = net(text, audio_1, vision_1)
                 if hyp_params.dataset == 'iemocap':
                     preds = preds.view(-1, 2)
                     eval_attr = eval_attr.view(-1)
