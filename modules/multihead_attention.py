@@ -26,7 +26,8 @@ class MultiheadAttention(nn.Module):
         self.register_parameter('in_proj_bias', None)
         if bias:
             self.in_proj_bias = Parameter(torch.Tensor(self.num_projections * embed_dim))
-        self.out_proj = nn.Linear(2*embed_dim, embed_dim, bias=bias) if decorr else nn.Linear(embed_dim, embed_dim, bias=bias)
+        # self.out_proj = nn.Linear(2*embed_dim, embed_dim, bias=bias) if decorr else nn.Linear(embed_dim, embed_dim, bias=bias)
+        self.out_proj = nn.Conv1d(2*embed_dim, embed_dim, kernel_size=1, padding=0, bias=False) if decorr else nn.Linear(embed_dim, embed_dim, bias=bias)
 
         if add_bias_kv:
             self.bias_k = Parameter(torch.Tensor(1, 1, embed_dim))

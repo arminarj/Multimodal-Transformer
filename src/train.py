@@ -61,7 +61,7 @@ def initiate(hyp_params, train_loader, valid_loader, test_loader):
                 'ctc_v2l_optimizer': ctc_v2l_optimizer,
                 'ctc_criterion': ctc_criterion,
                 'scheduler': scheduler}
-    #return train_model(settings, hyp_params, train_loader, valid_loader, test_loader)
+    return train_model(settings, hyp_params, train_loader, valid_loader, test_loader)
 
 
 ####################################################################
@@ -73,13 +73,13 @@ def initiate(hyp_params, train_loader, valid_loader, test_loader):
 def train_model(settings, hyp_params, train_loader, valid_loader, test_loader):
     model = settings['model']
     optimizer = settings['optimizer']
-    # criterion = settings['criterion']
+    criterion = settings['criterion']
 
-    def criterion(y_hat, y):
-        gamma = 1e-2
-        mse_loss = nn.MSELoss()(y_hat, y)
-        l1_reg = torch.norm(y_hat, 1)
-        return mse_loss + gamma * l1_reg
+    # def criterion(y_hat, y):
+    #     gamma = 1e-2
+    #     mse_loss = nn.MSELoss()(y_hat, y)
+    #     l1_reg = torch.norm(y_hat, 1)
+    #     return mse_loss + gamma * l1_reg
 
     ctc_a2l_module = settings['ctc_a2l_module']
     ctc_v2l_module = settings['ctc_v2l_module']
