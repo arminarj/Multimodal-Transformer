@@ -12,20 +12,21 @@ class MultiheadAttention(nn.Module):
     """
 
     def __init__(self, embed_dim, num_heads, attn_dropout=0.,
-                 bias=True, add_bias_kv=False, add_zero_attn=False):
+                 bias=True, add_bias_kv=False, add_zero_attn=False, decorr=True):
         super().__init__()
         self.embed_dim = embed_dim
+        print(f'embed_dim : {embed_dim}')
         self.num_heads = num_heads
         self.attn_dropout = attn_dropout
         self.head_dim = embed_dim // num_heads
         assert self.head_dim * num_heads == self.embed_dim, "embed_dim must be divisible by num_heads"
         self.scaling = self.head_dim ** -0.5
-
-        self.in_proj_weight = Parameter(torch.Tensor(3 * embed_dim, embed_dim))
+        self.num_projections = 4 if decorr else 3
+        self.in_proj_weight = Parameter(torch.Tensor(self.num_projections * embed_dim, embed_dim))
         self.register_parameter('in_proj_bias', None)
         if bias:
-            self.in_proj_bias = Parameter(torch.Tensor(3 * embed_dim))
-        self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
+            self.in_proj_bias = Parameter(torch.Tensor(self.num_projections * embed_dim))
+        self.out_proj = nn.Linear(2*embed_dim, embed_dim, bias=bias) if decorr else nn.Linear(embed_dim, embed_dim, bias=bias)
 
         if add_bias_kv:
             self.bias_k = Parameter(torch.Tensor(1, 1, embed_dim))
@@ -98,7 +99,8 @@ class MultiheadAttention(nn.Module):
                 v = torch.cat([v, self.bias_v.repeat(1, bsz, 1)])
             if attn_mask is not None:
                 attn_mask = torch.cat([attn_mask, attn_mask.new_zeros(attn_mask.size(0), 1)], dim=1)
-
+        print(f'q shape : {q.shape}')
+        print(f'view size {tgt_len}, {bsz * self.num_heads}, {self.head_dim}')
         q = q.contiguous().view(tgt_len, bsz * self.num_heads, self.head_dim).transpose(0, 1)
         if k is not None:
             k = k.contiguous().view(-1, bsz * self.num_heads, self.head_dim).transpose(0, 1)
@@ -109,6 +111,8 @@ class MultiheadAttention(nn.Module):
             else:
                 v = v.contiguous().view(-1, bsz * self.num_heads, self.head_dim).transpose(0, 1)
 
+        # print(f'v_corr with contiguous shape : {v_corr.shape}')
+        # print(f'v_decorr with contiguous shape : {v_decorr.shape}')
         src_len = k.size(1)
 
         if self.add_zero_attn:
@@ -139,27 +143,33 @@ class MultiheadAttention(nn.Module):
             # attn_weights = attn_weights / torch.max(attn_weights)
             attn_weights_corr = F.dropout(attn_weights_corr, p=self.attn_dropout, training=self.training)
             attn_weights_decorr = F.dropout(attn_weights_decorr, p=self.attn_dropout, training=self.training)
-            print(f'before V')
-            print(f'attn_weights_corr shape : {attn_weights_corr.shape}')
-            print(f'attn_weights_decorr shape : {attn_weights_decorr.shape}')
-            print(f'v_corr shape : {v_corr.shape}')
-            print(f'v_decorr shape : {v_decorr.shape}')
+            # print(f'before V')
+            # print(f'attn_weights_corr shape : {attn_weights_corr.shape}')
+            # print(f'attn_weights_decorr shape : {attn_weights_decorr.shape}')
+            # print(f'v_corr shape : {v_corr.shape}')
+            # print(f'v_decorr shape : {v_decorr.shape}')
 
             attn_corr = torch.bmm(attn_weights_corr, v_corr)
             attn_decorr = torch.bmm(attn_weights_decorr, v_decorr)
-            print(f'after V')
-            print(f'corr shape : {attn_corr.shape}')
-            print(f'decorr shape : {attn_decorr.shape}')
+            # print(f'after V')
+            # print(f'corr shape : {attn_corr.shape}')
+            # print(f'decorr shape : {attn_decorr.shape}')
 
             attn = torch.cat([attn_corr, attn_decorr], dim=-1)
-            print(f'attention shape : {attn.shape}')
+            # print(f'attention shape : {attn.shape}')
         else:
             ## not complete
             pass
-        assert list(attn.size()) == [bsz * self.num_heads, tgt_len, self.head_dim]
 
-        attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
-        attn = self.out_proj(attn)
+        if decorr:
+            assert list(attn.size()) == [bsz * self.num_heads, tgt_len, 2*self.head_dim]
+            attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, 2*embed_dim)
+            attn = self.out_proj(attn)
+
+        else :
+            assert list(attn.size()) == [bsz * self.num_heads, tgt_len, self.head_dim]
+            attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
+            attn = self.out_proj(attn)
 
         # average attention weights over heads
         attn_weights = attn_weights.view(bsz, self.num_heads, tgt_len, src_len)
@@ -182,23 +192,27 @@ class MultiheadAttention(nn.Module):
         return self._in_proj(value, start=2 * self.embed_dim)
 
     def in_proj_decorr_v(self, value):
-        corr_v = self._in_proj(value, start=2 * self.embed_dim, out_end=15,
-                        bias_start=2 * self.embed_dim, bias_end=int(2.5*self.embed_dim))
-        decorr_v = self._in_proj(value, start=2 * self.embed_dim, out_start=15,
-                        bias_start= int(2.5*self.embed_dim))
+        print('-----NEXT-----')
+        corr_v = self._in_proj(value, start=2 * self.embed_dim , end=3 * self.embed_dim)
+        decorr_v = self._in_proj(value, start=3 * self.embed_dim)
+        # print(f'corr V shape : {corr_v.shape}')
+        # print(f'decorr V shape : {decorr_v.shape}')
         return corr_v, decorr_v
 
-    def _in_proj(self, input, start=0, end=None, out_start=None, out_end=None, **kwargs):
+    def _in_proj(self, input, start=0, end=None, **kwargs):
         weight = kwargs.get('weight', self.in_proj_weight)
         bias = kwargs.get('bias', self.in_proj_bias)
-        if (out_start is None) and (out_end is None):
-            weight = weight[start:end, :]
-        else:
-            weight = weight[start:end, out_start:out_end]
-        print(f'start, end : {start}, {end}  ---- weight shape : {weight.shape}')
+        # if (out_start is None) and (out_end is None):
+        #     weight = weight[start:end, :]
+        # else:
+        weight = weight[start:end, :]
+        # print(f'start, end : {start}, {end}  ---- weight shape : {weight.shape}')
         if bias is not None:
-            if (bias_start is not None) or (bias_end is not None) :
-                bias = bias[bias_start:bias_end] 
-            else:
-                bias = bias[start:end]
-        return F.linear(input, weight.T, bias)
+            # if (bias_start is not None) or (bias_end is not None) :
+            #     bias = bias[bias_start:bias_end] 
+            # else:
+            bias = bias[start:end]
+        # print(f'weights shape : {weight.shape}')
+        # print(f'bias shape : {bias.shape}')
+        # print(f'input shape : {input.shape}')
+        return F.linear(input, weight, bias)
