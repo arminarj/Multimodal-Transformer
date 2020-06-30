@@ -64,7 +64,7 @@ class MULTModel(nn.Module):
         self.proj2 = nn.Linear(combined_dim, combined_dim)
         self.out_layer = nn.Linear(combined_dim, output_dim)
 
-    def get_network(self, self_type='l', layers=-1):
+    def get_network(self, self_type='l', layers=-1, decorr=True):
         if self_type in ['l', 'al', 'vl']:
             embed_dim, attn_dropout = self.d_l, self.attn_dropout
         elif self_type in ['a', 'la', 'va']:
@@ -72,11 +72,11 @@ class MULTModel(nn.Module):
         elif self_type in ['v', 'lv', 'av']:
             embed_dim, attn_dropout = self.d_v, self.attn_dropout_v
         elif self_type == 'l_mem':
-            embed_dim, attn_dropout = 2*self.d_l, self.attn_dropout
+            embed_dim, attn_dropout, decorr = 2*self.d_l, self.attn_dropout, False
         elif self_type == 'a_mem':
-            embed_dim, attn_dropout = 2*self.d_a, self.attn_dropout
+            embed_dim, attn_dropout, decorr= 2*self.d_a, self.attn_dropout, False
         elif self_type == 'v_mem':
-            embed_dim, attn_dropout = 2*self.d_v, self.attn_dropout
+            embed_dim, attn_dropout, decorr= 2*self.d_v, self.attn_dropout, False
         else:
             raise ValueError("Unknown network type")
         
@@ -87,7 +87,8 @@ class MULTModel(nn.Module):
                                   relu_dropout=self.relu_dropout,
                                   res_dropout=self.res_dropout,
                                   embed_dropout=self.embed_dropout,
-                                  attn_mask=self.attn_mask)
+                                  attn_mask=self.attn_mask, 
+                                  decorr=decorr)
             
     def forward(self, x_l, x_a, x_v):
         """

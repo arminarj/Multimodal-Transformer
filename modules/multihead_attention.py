@@ -15,7 +15,7 @@ class MultiheadAttention(nn.Module):
                  bias=True, add_bias_kv=False, add_zero_attn=False, decorr=True):
         super().__init__()
         self.embed_dim = embed_dim
-        print(f'embed_dim : {embed_dim}')
+        # print(f'embed_dim : {embed_dim}')
         self.num_heads = num_heads
         self.attn_dropout = attn_dropout
         self.head_dim = embed_dim // num_heads
@@ -38,6 +38,8 @@ class MultiheadAttention(nn.Module):
 
         self.reset_parameters()
 
+        self.decorr = decorr
+
     def reset_parameters(self):
         nn.init.xavier_uniform_(self.in_proj_weight)
         nn.init.xavier_uniform_(self.out_proj.weight)
@@ -49,7 +51,7 @@ class MultiheadAttention(nn.Module):
         if self.bias_v is not None:
             nn.init.xavier_normal_(self.bias_v)
 
-    def forward(self, query, key, value, attn_mask=None, decorr=True):
+    def forward(self, query, key, value, attn_mask=None):
         """Input shape: Time x Batch x Channel
         Self-attention can be implemented by passing in the same arguments for
         query, key and value. Timesteps can be masked by supplying a T x T mask in the
@@ -57,6 +59,8 @@ class MultiheadAttention(nn.Module):
         the key by passing a binary ByteTensor (`key_padding_mask`) with shape:
         batch x src_len, where padding elements are indicated by 1s.
         """
+        # print('-----NEXT FORWARD LOOP-----')
+        decorr = self.decorr
         qkv_same = query.data_ptr() == key.data_ptr() == value.data_ptr()
         kv_same = key.data_ptr() == value.data_ptr()
 
@@ -69,7 +73,11 @@ class MultiheadAttention(nn.Module):
 
         if qkv_same:
             # self-attention
+            # print(f'----- SelfAttetion -----')
+            # print(f'num_projections : {self.num_projections}')
+            # print(f'decorr flag : {decorr}')
             q, k, v = self.in_proj_qkv(query)
+            # print(f'q shape : {q.shape}'); print(f'k shape : {k.shape}'); print(f'v shape : {v.shape}')
         elif kv_same:
             # encoder-decoder attention
             q = self.in_proj_q(query)
@@ -99,16 +107,19 @@ class MultiheadAttention(nn.Module):
                 v = torch.cat([v, self.bias_v.repeat(1, bsz, 1)])
             if attn_mask is not None:
                 attn_mask = torch.cat([attn_mask, attn_mask.new_zeros(attn_mask.size(0), 1)], dim=1)
-        print(f'q shape : {q.shape}')
-        print(f'view size {tgt_len}, {bsz * self.num_heads}, {self.head_dim}')
+        # print(f'q shape : {q.shape}')
+        # print(f'view size {tgt_len}, {bsz} , {self.num_heads}, {self.head_dim}')
+        assert self.head_dim * self.num_heads == self.embed_dim, "embed_dim must be divisible by num_heads"
         q = q.contiguous().view(tgt_len, bsz * self.num_heads, self.head_dim).transpose(0, 1)
         if k is not None:
             k = k.contiguous().view(-1, bsz * self.num_heads, self.head_dim).transpose(0, 1)
-        if (v is not None) or (v_corr is not None):
-            if decorr:
+
+        if decorr:
+            if (v_corr is not None):
                 v_corr = v_corr.contiguous().view(-1, bsz * self.num_heads, self.head_dim).transpose(0, 1)
                 v_decorr = v_decorr.contiguous().view(-1, bsz * self.num_heads, self.head_dim).transpose(0, 1)
-            else:
+        else:
+            if v is not None:
                 v = v.contiguous().view(-1, bsz * self.num_heads, self.head_dim).transpose(0, 1)
 
         # print(f'v_corr with contiguous shape : {v_corr.shape}')
@@ -151,22 +162,29 @@ class MultiheadAttention(nn.Module):
 
             attn_corr = torch.bmm(attn_weights_corr, v_corr)
             attn_decorr = torch.bmm(attn_weights_decorr, v_decorr)
-            # print(f'after V')
+            # print(f'----- after V -----')
             # print(f'corr shape : {attn_corr.shape}')
             # print(f'decorr shape : {attn_decorr.shape}')
 
+            # attn = torch.cat([attn_corr, attn_decorr], dim=-1)
+            # print(f'attention shape : {attn.shape}')
+            assert list(attn_corr.size()) == [bsz * self.num_heads, tgt_len, self.head_dim]
+            attn_corr = attn_corr.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
+            assert list(attn_decorr.size()) == [bsz * self.num_heads, tgt_len, self.head_dim]
+            attn_decorr = attn_decorr.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
+            # print(f'----- after V -----')
+            # print(f'corr shape : {attn_corr.shape}')
+            # print(f'decorr shape : {attn_decorr.shape}')
             attn = torch.cat([attn_corr, attn_decorr], dim=-1)
             # print(f'attention shape : {attn.shape}')
-        else:
-            ## not complete
-            pass
-
-        if decorr:
-            assert list(attn.size()) == [bsz * self.num_heads, tgt_len, 2*self.head_dim]
-            attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, 2*embed_dim)
             attn = self.out_proj(attn)
+        else:
+            attn_weights = F.softmax(attn_weights.float(), dim=-1).type_as(attn_weights)
+            # attn_weights = F.relu(attn_weights)
+            # attn_weights = attn_weights / torch.max(attn_weights)
+            attn_weights = F.dropout(attn_weights, p=self.attn_dropout, training=self.training)
 
-        else :
+            attn = torch.bmm(attn_weights, v)
             assert list(attn.size()) == [bsz * self.num_heads, tgt_len, self.head_dim]
             attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
             attn = self.out_proj(attn)
@@ -183,6 +201,7 @@ class MultiheadAttention(nn.Module):
         return self._in_proj(key, start=self.embed_dim).chunk(2, dim=-1)
 
     def in_proj_q(self, query, **kwargs):
+        # print('-----NEXT Query mm -----')
         return self._in_proj(query, end=self.embed_dim, **kwargs)
 
     def in_proj_k(self, key):
@@ -192,7 +211,7 @@ class MultiheadAttention(nn.Module):
         return self._in_proj(value, start=2 * self.embed_dim)
 
     def in_proj_decorr_v(self, value):
-        print('-----NEXT-----')
+        # print('-----NEXT decorr V-----')
         corr_v = self._in_proj(value, start=2 * self.embed_dim , end=3 * self.embed_dim)
         decorr_v = self._in_proj(value, start=3 * self.embed_dim)
         # print(f'corr V shape : {corr_v.shape}')
