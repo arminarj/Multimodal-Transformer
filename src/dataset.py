@@ -19,7 +19,6 @@ else:
 class Multimodal_Datasets(Dataset):
     def __init__(self, dataset_path, data='mosei_senti', split_type='train', if_align=False, norm_lables=False):
         super(Multimodal_Datasets, self).__init__()
-        _dataset_path = dataset_path
         dataset_path = os.path.join(dataset_path, data+'.data')
         dataset = torch.load(dataset_path)
 

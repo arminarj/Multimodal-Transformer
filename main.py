@@ -145,7 +145,8 @@ hyp_params.batch_chunk = args.batch_chunk
 hyp_params.n_train, hyp_params.n_valid, hyp_params.n_test = len(train_data), len(valid_data), len(test_data)
 hyp_params.model = str.upper(args.model.strip())
 hyp_params.output_dim = output_dim_dict.get(dataset, 6)
-hyp_params.criterion = criterion_dict.get(dataset, 'MSELoss')
+# hyp_params.criterion = criterion_dict.get(dataset, 'MSELoss')
+hyp_params.criterion = criterion_dict.get(dataset, 'SmoothL1Loss')
 
 
 if __name__ == '__main__':
