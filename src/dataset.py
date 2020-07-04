@@ -17,7 +17,7 @@ else:
 
 ## ['COAVAREP', 'FACET 4.2', 'OpenFace_2.0', 'All Labels', 'glove_vectors', 'OpenSMILE']
 class Multimodal_Datasets(Dataset):
-    def __init__(self, dataset_path, data='mosei_senti', split_type='train', if_align=False, norm_lables=False):
+    def __init__(self, dataset_path, data='mosei_senti', split_type='train', if_align=False, norm_lables=True):
         super(Multimodal_Datasets, self).__init__()
         dataset_path = os.path.join(dataset_path, data+'.data')
         dataset = torch.load(dataset_path)
@@ -78,9 +78,6 @@ class Multimodal_Datasets(Dataset):
     def normalize(self, x): # input shape 50 x features
         _eps = 1e-8
         print(f'X shape is : {x.shape}')
-        for index in range(x.shape[0]):
-            for seq in range(x[index].shape[0]):
-                x[index][seq] = (x[index][seq] - x[index][seq].min())/(x[index][seq].max()- x[index][seq].min() + _eps)
-                # x[index][seq] = (x[index][seq] - 1/2) * 2
-                assert torch.isnan(x[index][seq]).sum().item() == 0
+        x = x / (x.max(0)[0] + _eps)
+        print(f'mean : {x.mean(axis=0)}, max : {torch.max(x, axis=0)}')
         return x

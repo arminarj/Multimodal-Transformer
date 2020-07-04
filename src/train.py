@@ -51,7 +51,7 @@ def initiate(hyp_params, train_loader, valid_loader, test_loader):
         ctc_a2l_optimizer = getattr(optim, hyp_params.optim)(ctc_a2l_module.parameters(), lr=hyp_params.lr)
         ctc_v2l_optimizer = getattr(optim, hyp_params.optim)(ctc_v2l_module.parameters(), lr=hyp_params.lr)
     
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', patience=hyp_params.when, factor=0.1, verbose=True)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', patience=hyp_params.when, factor=0.5, verbose=True)
     settings = {'model': model,
                 'optimizer': optimizer,
                 'criterion': criterion,
@@ -75,11 +75,11 @@ def train_model(settings, hyp_params, train_loader, valid_loader, test_loader):
     optimizer = settings['optimizer']
     criterion = settings['criterion']
 
-    # def criterion(y_hat, y):
-    #     gamma = 1e-2
-    #     mse_loss = nn.MSELoss()(y_hat, y)
-    #     l1_reg = torch.norm(y_hat, 1)
-    #     return mse_loss + gamma * l1_reg
+    def criterion(y_hat, y):
+        gamma = 1e-4
+        mse_loss = nn.MSELoss()(y_hat, y)
+        l1_reg = torch.norm(y_hat, 1)
+        return mse_loss + gamma * l1_reg
 
     ctc_a2l_module = settings['ctc_a2l_module']
     ctc_v2l_module = settings['ctc_v2l_module']
@@ -100,7 +100,7 @@ def train_model(settings, hyp_params, train_loader, valid_loader, test_loader):
         for i_batch, (batch_X, batch_Y, batch_META) in enumerate(train_loader):
             sample_ind, text, audio_1, audio_2, vision_1, vision_2 = batch_X
             eval_attr = batch_Y  # if num of labels is 1
-            
+
             model.zero_grad()
             if ctc_criterion is not None:
                 ctc_a2l_module.zero_grad()
