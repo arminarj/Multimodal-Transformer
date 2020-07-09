@@ -60,9 +60,12 @@ class MULTModel(nn.Module):
         self.trans_v_mem = self.get_network(self_type='v_mem', layers=3)
        
         # Projection layers
-        self.proj1 = nn.Linear(combined_dim, combined_dim)
-        self.proj2 = nn.Linear(combined_dim, combined_dim)
-        self.out_layer = nn.Linear(combined_dim, output_dim)
+        # self.proj1 = nn.Linear(combined_dim, combined_dim)
+        # self.proj2 = nn.Linear(combined_dim, combined_dim)
+        self.out_layer = nn.Linear(30, output_dim)
+
+        self.conv1 = nn.Conv3d(1, 20, (2, 31, 41))
+        self.conv2 = nn.Conv3d(20, 30, (2, 20, 20))
 
     def get_network(self, self_type='l', layers=-1, decorr=True):
         if self_type in ['l', 'al', 'vl']:
@@ -112,9 +115,10 @@ class MULTModel(nn.Module):
             h_l_with_vs = self.trans_l_with_v(proj_x_l, proj_x_v, proj_x_v)    # Dimension (L, N, d_l)
             h_ls = torch.cat([h_l_with_as, h_l_with_vs], dim=2)
             h_ls = self.trans_l_mem(h_ls)
-            if type(h_ls) == tuple:
-                h_ls = h_ls[0]
-            last_h_l = last_hs = h_ls[-1]   # Take the last output for prediction
+            last_h_l = h_ls
+            # if type(h_ls) == tuple:
+            #     h_ls = h_ls[0]
+            # last_h_l = last_hs = h_ls[-1]   # Take the last output for prediction
 
         if self.aonly:
             # (L,V) --> A
@@ -122,26 +126,33 @@ class MULTModel(nn.Module):
             h_a_with_vs = self.trans_a_with_v(proj_x_a, proj_x_v, proj_x_v)
             h_as = torch.cat([h_a_with_ls, h_a_with_vs], dim=2)
             h_as = self.trans_a_mem(h_as)
-            if type(h_as) == tuple:
-                h_as = h_as[0]
-            last_h_a = last_hs = h_as[-1]
+            last_h_a = h_as
+            # if type(h_as) == tuple:
+            #     h_as = h_as[0]
+            # last_h_a = last_hs = h_as[-1]
 
         if self.vonly:
             # (L,A) --> V
             h_v_with_ls = self.trans_v_with_l(proj_x_v, proj_x_l, proj_x_l)
             h_v_with_as = self.trans_v_with_a(proj_x_v, proj_x_a, proj_x_a)
             h_vs = torch.cat([h_v_with_ls, h_v_with_as], dim=2)
-            h_vs = self.trans_v_mem(h_vs)
-            if type(h_vs) == tuple:
-                h_vs = h_vs[0]
-            last_h_v = last_hs = h_vs[-1]
+            h_vs = self.trans_v_mem(h_vs) ## 50x16x30
+            last_h_v = h_vs
+            # if type(h_vs) == tuple:
+            #     h_vs = h_vs[0]
+            # last_h_v = last_hs = h_vs[-1]
         
         if self.partial_mode == 3:
-            last_hs = torch.cat([last_h_l, last_h_a, last_h_v], dim=1)
+            x = torch.stack([last_h_l, last_h_a, last_h_v]) # 3x50x16x30
+
+        print(f'x after attentions shape : {x.shape}')
+        x = x.permute(2, 0, 1, 3).unsqueeze(1)# 16x1x3x30x50
+        print(f'x befor conv shape : {x.shape}') 
+        x = F.dropout(F.relu(self.conv1(x)), p=self.out_dropout, training=self.training) # 16x20x2x20x20
+        print(f'x after conv1 shape : {x.shape}') 
+        x = F.dropout(F.relu(self.conv2(x).squeeze()), p=self.out_dropout, training=self.training) # 16x20
+        print(f'x after conv2 shape : {x.shape}')
+        # last_hs_proj += last_hs
         
-        # A residual block
-        last_hs_proj = self.proj2(F.dropout(F.relu(self.proj1(last_hs)), p=self.out_dropout, training=self.training))
-        last_hs_proj += last_hs
-        
-        output = self.out_layer(last_hs_proj)
-        return output, last_hs
+        x = self.out_layer(x)
+        return x
