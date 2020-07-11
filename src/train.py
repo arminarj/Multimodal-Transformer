@@ -30,7 +30,9 @@ def get_CTC_module(hyp_params):
     v2l_module = getattr(ctc, 'CTCModule')(in_dim=hyp_params.orig_d_v, out_seq_len=hyp_params.l_len)
     return a2l_module, v2l_module
 
-def initiate(hyp_params, train_loader, valid_loader, test_loader):
+# def initiate(hyp_params, train_loader, valid_loader, test_loader):
+def initiate(hyp_params):
+
     model = getattr(models, hyp_params.model+'Model')(hyp_params)
 
     if hyp_params.use_cuda:
@@ -51,7 +53,7 @@ def initiate(hyp_params, train_loader, valid_loader, test_loader):
         ctc_a2l_optimizer = getattr(optim, hyp_params.optim)(ctc_a2l_module.parameters(), lr=hyp_params.lr)
         ctc_v2l_optimizer = getattr(optim, hyp_params.optim)(ctc_v2l_module.parameters(), lr=hyp_params.lr)
     
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', patience=hyp_params.when, factor=0.1, verbose=True)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', patience=hyp_params.when, factor=0.5, verbose=True)
     settings = {'model': model,
                 'optimizer': optimizer,
                 'criterion': criterion,
@@ -61,7 +63,8 @@ def initiate(hyp_params, train_loader, valid_loader, test_loader):
                 'ctc_v2l_optimizer': ctc_v2l_optimizer,
                 'ctc_criterion': ctc_criterion,
                 'scheduler': scheduler}
-    return train_model(settings, hyp_params, train_loader, valid_loader, test_loader)
+    # return train_model(settings, hyp_params, train_loader, valid_loader, test_loader)
+    return test(settings, hyp_params)
 
 
 ####################################################################
@@ -73,8 +76,14 @@ def initiate(hyp_params, train_loader, valid_loader, test_loader):
 def train_model(settings, hyp_params, train_loader, valid_loader, test_loader):
     model = settings['model']
     optimizer = settings['optimizer']
-    criterion = settings['criterion']    
-    
+    criterion = settings['criterion']
+
+    def criterion(y_hat, y):
+        gamma = 1e-4
+        mse_loss = nn.MSELoss()(y_hat, y)
+        l1_reg = torch.norm(y_hat, 1)
+        return mse_loss + gamma * l1_reg
+
     ctc_a2l_module = settings['ctc_a2l_module']
     ctc_v2l_module = settings['ctc_v2l_module']
     ctc_a2l_optimizer = settings['ctc_a2l_optimizer']
@@ -94,7 +103,7 @@ def train_model(settings, hyp_params, train_loader, valid_loader, test_loader):
         for i_batch, (batch_X, batch_Y, batch_META) in enumerate(train_loader):
             sample_ind, text, audio_1, audio_2, vision_1, vision_2 = batch_X
             eval_attr = batch_Y  # if num of labels is 1
-            
+
             model.zero_grad()
             if ctc_criterion is not None:
                 ctc_a2l_module.zero_grad()
@@ -158,7 +167,7 @@ def train_model(settings, hyp_params, train_loader, valid_loader, test_loader):
                 ctc_loss.backward()
                 combined_loss = raw_loss + ctc_loss
             else:
-                preds, hiddens = net(text, audio_1, audio_2, vision_1, vision_2)
+                preds, hiddens = net(text, audio_1, vision_1)
                 if hyp_params.dataset == 'iemocap':
                     preds = preds.view(-1, 2)
                     eval_attr = eval_attr.view(-1)
@@ -219,7 +228,7 @@ def train_model(settings, hyp_params, train_loader, valid_loader, test_loader):
                     vision, _ = ctc_v2l_net(vision)   # vision aligned to text
                 
                 net = nn.DataParallel(model) if batch_size > 10 else model
-                preds, _ = net(text, audio_1, audio_2, vision_1, vision_2)
+                preds, _ = net(text, audio_1, vision_1)
                 if hyp_params.dataset == 'iemocap':
                     preds = preds.view(-1, 2)
                     eval_attr = eval_attr.view(-1)
@@ -265,5 +274,17 @@ def train_model(settings, hyp_params, train_loader, valid_loader, test_loader):
     elif hyp_params.dataset == 'iemocap':
         eval_iemocap(results, truths)
 
-    sys.stdout.flush()
-    input('[Press Any Key to start another run]')
+
+
+def test(settings, hyp_params):
+    # hyp_params.orig_d_l, hyp_params.orig_d_a1, hyp_params.orig_d_v1
+    input_test_l = torch.rand(16, 50, hyp_params.orig_d_l)
+    input_test_a = torch.rand(16, 50, hyp_params.orig_d_a1)
+    input_test_v = torch.rand(16, 50, hyp_params.orig_d_v1)
+
+    model = settings['model']
+
+    model(input_test_l, input_test_a, input_test_v)
+    print(f'model parameter : {sum(p.numel() for p in model.parameters())}')
+
+    return 

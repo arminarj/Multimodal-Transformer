@@ -4,6 +4,8 @@ from src.utils import *
 from torch.utils.data import DataLoader
 from src import train
 
+import random
+
 
 parser = argparse.ArgumentParser(description='MOSEI Sentiment Analysis')
 parser.add_argument('-f', default='', type=str)
@@ -78,6 +80,7 @@ parser.add_argument('--name', type=str, default='mult',
 args = parser.parse_args()
 
 torch.manual_seed(args.seed)
+random.seed(args.seed)
 dataset = str.lower(args.dataset.strip())
 valid_partial_mode = args.lonly + args.vonly + args.aonly
 
@@ -116,13 +119,13 @@ if torch.cuda.is_available():
 
 print("Start loading the data....")
 
-train_data = get_data(args, dataset, 'train')
-valid_data = get_data(args, dataset, 'valid')
-test_data = get_data(args, dataset, 'test')
+# train_data = get_data(args, dataset, 'train')
+# valid_data = get_data(args, dataset, 'valid')
+# test_data = get_data(args, dataset, 'test')
    
-train_loader = DataLoader(train_data, batch_size=args.batch_size, shuffle=True)
-valid_loader = DataLoader(valid_data, batch_size=args.batch_size, shuffle=True)
-test_loader = DataLoader(test_data, batch_size=args.batch_size, shuffle=True)
+# train_loader = DataLoader(train_data, batch_size=args.batch_size, shuffle=True)
+# valid_loader = DataLoader(valid_data, batch_size=args.batch_size, shuffle=True)
+# test_loader = DataLoader(test_data, batch_size=args.batch_size, shuffle=True)
 
 print('Finish loading the data....')
 if not args.aligned:
@@ -135,19 +138,23 @@ if not args.aligned:
 ####################################################################
 
 hyp_params = args
-hyp_params.orig_d_l, hyp_params.orig_d_a1, hyp_params.orig_d_a2, hyp_params.orig_d_v1, hyp_params.orig_d_v2 = train_data.get_dim()
-hyp_params.l_len, hyp_params.a_len, hyp_params.v_len, _, _ = train_data.get_seq_len()
+# hyp_params.orig_d_l, hyp_params.orig_d_a1, hyp_params.orig_d_a2, hyp_params.orig_d_v1, hyp_params.orig_d_v2 = train_data.get_dim()
+hyp_params.orig_d_l, hyp_params.orig_d_a1, hyp_params.orig_d_a2, hyp_params.orig_d_v1, hyp_params.orig_d_v2 = 300, 300, 300, 300, 300
+# hyp_params.l_len, hyp_params.a_len, hyp_params.v_len, _, _ = train_data.get_seq_len()
+hyp_params.l_len, hyp_params.a_len, hyp_params.v_len = 50, 50, 50
 hyp_params.layers = args.nlevels
 hyp_params.use_cuda = use_cuda
 hyp_params.dataset = dataset
 hyp_params.when = args.when
 hyp_params.batch_chunk = args.batch_chunk
-hyp_params.n_train, hyp_params.n_valid, hyp_params.n_test = len(train_data), len(valid_data), len(test_data)
+# hyp_params.n_train, hyp_params.n_valid, hyp_params.n_test = len(train_data), len(valid_data), len(test_data)
 hyp_params.model = str.upper(args.model.strip())
 hyp_params.output_dim = output_dim_dict.get(dataset, 6)
 hyp_params.criterion = criterion_dict.get(dataset, 'MSELoss')
+# hyp_params.criterion = criterion_dict.get(dataset, 'SmoothL1Loss')
 
 
 if __name__ == '__main__':
-    test_loss = train.initiate(hyp_params, train_loader, valid_loader, test_loader)
+    # test_loss = train.initiate(hyp_params, train_loader, valid_loader, test_loader)
+    test_loss = train.initiate(hyp_params)
 
