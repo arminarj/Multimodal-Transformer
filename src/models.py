@@ -27,6 +27,8 @@ class MULTModel(nn.Module):
         self.out_dropout = hyp_params.out_dropout
         self.embed_dropout = hyp_params.embed_dropout
         self.attn_mask = hyp_params.attn_mask
+        self.seq_len = hyp_params.v_len 
+
 
         combined_dim = self.d_l + self.d_a + self.d_v
 
@@ -80,7 +82,7 @@ class MULTModel(nn.Module):
             embed_dim, attn_dropout = 2*self.d_v, self.attn_dropout
         else:
             raise ValueError("Unknown network type")
-        
+        embed_dim *= self.seq_len
         return TransformerEncoder(embed_dim=embed_dim,
                                   num_heads=self.num_heads,
                                   layers=max(self.layers, layers),
@@ -102,16 +104,21 @@ class MULTModel(nn.Module):
         proj_x_l = x_l if self.orig_d_l == self.d_l else self.proj_l(x_l)
         proj_x_a = x_a if self.orig_d_a == self.d_a else self.proj_a(x_a)
         proj_x_v = x_v if self.orig_d_v == self.d_v else self.proj_v(x_v)
-        proj_x_a = proj_x_a.permute(0, 2, 1) # batch x seq x features
-        proj_x_v = proj_x_v.permute(0, 2, 1)
-        proj_x_l = proj_x_l.permute(0, 2, 1)
+        # proj_x_a = proj_x_a.permute(0, 2, 1) # batch x seq x features
+        # proj_x_v = proj_x_v.permute(0, 2, 1)
+        # proj_x_l = proj_x_l.permute(0, 2, 1)
+        batch_size = proj_x_a.size(0)
+        proj_x_a = proj_x_a.reshape(batch_size, -1).unsqueeze(1) # batch x 1 x (seq * features)
+        proj_x_v = proj_x_v.reshape(batch_size, -1).unsqueeze(1) 
+        proj_x_l = proj_x_l.reshape(batch_size, -1).unsqueeze(1) 
 
         if self.lonly:
             # (V,A) --> L
             h_l_with_as = self.trans_l_with_a(proj_x_l, proj_x_a, proj_x_a)    # Dimension (L, N, d_l)
             h_l_with_vs = self.trans_l_with_v(proj_x_l, proj_x_v, proj_x_v)    # Dimension (L, N, d_l)
             h_ls = torch.cat([h_l_with_as, h_l_with_vs], dim=2)
-            h_ls = self.trans_l_mem(h_ls)
+            h_ls = self.trans_l_mem(h_ls).reshape(batch_size, self.seq_len, 2*self.d_l).permute(1, 0, 2)
+            # print(f'l attention output : {h_ls.shape}')
             if type(h_ls) == tuple:
                 h_ls = h_ls[0]
             last_h_l = last_hs = h_ls[-1]   # Take the last output for prediction
@@ -121,7 +128,8 @@ class MULTModel(nn.Module):
             h_a_with_ls = self.trans_a_with_l(proj_x_a, proj_x_l, proj_x_l)
             h_a_with_vs = self.trans_a_with_v(proj_x_a, proj_x_v, proj_x_v)
             h_as = torch.cat([h_a_with_ls, h_a_with_vs], dim=2)
-            h_as = self.trans_a_mem(h_as)
+            h_as = self.trans_a_mem(h_as).reshape(batch_size, self.seq_len, 2* self.d_a).permute(1, 0, 2)
+            # print(f'a attention output : {h_as.shape}')
             if type(h_as) == tuple:
                 h_as = h_as[0]
             last_h_a = last_hs = h_as[-1]
@@ -131,13 +139,18 @@ class MULTModel(nn.Module):
             h_v_with_ls = self.trans_v_with_l(proj_x_v, proj_x_l, proj_x_l)
             h_v_with_as = self.trans_v_with_a(proj_x_v, proj_x_a, proj_x_a)
             h_vs = torch.cat([h_v_with_ls, h_v_with_as], dim=2)
-            h_vs = self.trans_v_mem(h_vs)
+            h_vs = self.trans_v_mem(h_vs).reshape(batch_size, self.seq_len, 2*self.d_v).permute(1, 0, 2)
+            # print(f'v attention output : {h_vs.shape}')
             if type(h_vs) == tuple:
                 h_vs = h_vs[0]
             last_h_v = last_hs = h_vs[-1]
-        
+
         if self.partial_mode == 3:
             last_hs = torch.cat([last_h_l, last_h_a, last_h_v], dim=1)
+            # print(f'last_hs shape : {last_hs.shape}') 
+        # if self.partial_mode == 3:
+        #     last_hs = torch.stack([h_ls, h_as, h_vs]).permute(1, 0, 2, 3)
+        #     print(f'last_hs shape : {last_hs.shape}')
         
         # A residual block
         last_hs_proj = self.proj2(F.dropout(F.relu(self.proj1(last_hs)), p=self.out_dropout, training=self.training))

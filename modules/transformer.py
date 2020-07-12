@@ -125,9 +125,10 @@ class TransformerEncoderLayer(nn.Module):
         self.relu_dropout = relu_dropout
         self.res_dropout = res_dropout
         self.normalize_before = True
+        self.gamma = nn.Parameter(torch.zeros(1))
 
-        self.fc1 = Linear(self.embed_dim, 4*self.embed_dim)   # The "Add & Norm" part in the paper
-        self.fc2 = Linear(4*self.embed_dim, self.embed_dim)
+        self.fc1 = Linear(self.embed_dim, self.embed_dim)   # The "Add & Norm" part in the paper
+        self.fc2 = Linear(self.embed_dim, self.embed_dim)
         self.layer_norms = nn.ModuleList([LayerNorm(self.embed_dim) for _ in range(2)])
 
     def forward(self, x, x_k=None, x_v=None):
@@ -144,14 +145,21 @@ class TransformerEncoderLayer(nn.Module):
         residual = x
         x = self.maybe_layer_norm(0, x, before=True)
         mask = buffered_future_mask(x, x_k) if self.attn_mask else None
+        # batch, seq, features  = x.size()
+        # x = x.view(batch, 1, -1)
         if x_k is None and x_v is None:
-            x, _ = self.self_attn(query=x, key=x, value=x, attn_mask=mask)
+            x = self.self_attn(query=x, key=x, value=x, attn_mask=mask)
         else:
+            # batch, seq, features  = x_k.size()
+            # print(f'x_k shape : {x_k.shape}')
+            # x_k = x_k.reshape(batch, seq * features).unsqueeze(1)
+            # batch, seq, features  = x_v.size()
+            # x_v = x_k.reshape(batch, seq * features).unsqueeze(1)
             x_k = self.maybe_layer_norm(0, x_k, before=True)
             x_v = self.maybe_layer_norm(0, x_v, before=True) 
-            x, _ = self.self_attn(query=x, key=x_k, value=x_v, attn_mask=mask)
+            x = self.self_attn(query=x, key=x_k, value=x_v, attn_mask=mask)
         x = F.dropout(x, p=self.res_dropout, training=self.training)
-        x = residual + x
+        x = residual + self.gamma* x
         x = self.maybe_layer_norm(0, x, after=True)
 
         residual = x

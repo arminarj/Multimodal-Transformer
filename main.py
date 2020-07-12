@@ -138,16 +138,16 @@ if not args.aligned:
 ####################################################################
 
 hyp_params = args
-# hyp_params.orig_d_l, hyp_params.orig_d_a1, hyp_params.orig_d_a2, hyp_params.orig_d_v1, hyp_params.orig_d_v2 = train_data.get_dim()
-hyp_params.orig_d_l, hyp_params.orig_d_a1, hyp_params.orig_d_a2, hyp_params.orig_d_v1, hyp_params.orig_d_v2 = 300, 300, 300, 300, 300
-# hyp_params.l_len, hyp_params.a_len, hyp_params.v_len, _, _ = train_data.get_seq_len()
-hyp_params.l_len, hyp_params.a_len, hyp_params.v_len = 50, 50, 50
+hyp_params.orig_d_l, hyp_params.orig_d_a1, hyp_params.orig_d_a2, hyp_params.orig_d_v1, hyp_params.orig_d_v2 = train_data.get_dim()
+# hyp_params.orig_d_l, hyp_params.orig_d_a1, hyp_params.orig_d_a2, hyp_params.orig_d_v1, hyp_params.orig_d_v2 = 300, 300, 300, 300, 300
+hyp_params.l_len, hyp_params.a_len, hyp_params.v_len, _, _ = train_data.get_seq_len()
+# hyp_params.l_len, hyp_params.a_len, hyp_params.v_len = 50, 50, 50
 hyp_params.layers = args.nlevels
 hyp_params.use_cuda = use_cuda
 hyp_params.dataset = dataset
 hyp_params.when = args.when
 hyp_params.batch_chunk = args.batch_chunk
-# hyp_params.n_train, hyp_params.n_valid, hyp_params.n_test = len(train_data), len(valid_data), len(test_data)
+hyp_params.n_train, hyp_params.n_valid, hyp_params.n_test = len(train_data), len(valid_data), len(test_data)
 hyp_params.model = str.upper(args.model.strip())
 hyp_params.output_dim = output_dim_dict.get(dataset, 6)
 hyp_params.criterion = criterion_dict.get(dataset, 'MSELoss')
@@ -155,6 +155,6 @@ hyp_params.criterion = criterion_dict.get(dataset, 'MSELoss')
 
 
 if __name__ == '__main__':
-    # test_loss = train.initiate(hyp_params, train_loader, valid_loader, test_loader)
-    test_loss = train.initiate(hyp_params)
+    test_loss = train.initiate(hyp_params, train_loader, valid_loader, test_loader)
+    # test_loss = train.initiate(hyp_params)
 

@@ -30,8 +30,8 @@ def get_CTC_module(hyp_params):
     v2l_module = getattr(ctc, 'CTCModule')(in_dim=hyp_params.orig_d_v, out_seq_len=hyp_params.l_len)
     return a2l_module, v2l_module
 
-# def initiate(hyp_params, train_loader, valid_loader, test_loader):
-def initiate(hyp_params):
+def initiate(hyp_params, train_loader, valid_loader, test_loader):
+# def initiate(hyp_params):
 
     model = getattr(models, hyp_params.model+'Model')(hyp_params)
 
@@ -63,8 +63,8 @@ def initiate(hyp_params):
                 'ctc_v2l_optimizer': ctc_v2l_optimizer,
                 'ctc_criterion': ctc_criterion,
                 'scheduler': scheduler}
-    # return train_model(settings, hyp_params, train_loader, valid_loader, test_loader)
-    return test(settings, hyp_params)
+    return train_model(settings, hyp_params, train_loader, valid_loader, test_loader)
+    # return test(settings, hyp_params)
 
 
 ####################################################################
@@ -276,15 +276,15 @@ def train_model(settings, hyp_params, train_loader, valid_loader, test_loader):
 
 
 
-def test(settings, hyp_params):
-    # hyp_params.orig_d_l, hyp_params.orig_d_a1, hyp_params.orig_d_v1
-    input_test_l = torch.rand(16, 50, hyp_params.orig_d_l)
-    input_test_a = torch.rand(16, 50, hyp_params.orig_d_a1)
-    input_test_v = torch.rand(16, 50, hyp_params.orig_d_v1)
+# def test(settings, hyp_params):
+#     # hyp_params.orig_d_l, hyp_params.orig_d_a1, hyp_params.orig_d_v1
+#     input_test_l = torch.rand(16, 50, hyp_params.orig_d_l)
+#     input_test_a = torch.rand(16, 50, hyp_params.orig_d_a1)
+#     input_test_v = torch.rand(16, 50, hyp_params.orig_d_v1)
 
-    model = settings['model']
+#     model = settings['model']
 
-    model(input_test_l, input_test_a, input_test_v)
-    print(f'model parameter : {sum(p.numel() for p in model.parameters())}')
+#     model(input_test_l, input_test_a, input_test_v)
+#     print(f'model parameter : {sum(p.numel() for p in model.parameters())}')
 
-    return 
+#     return 
